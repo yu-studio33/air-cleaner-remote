@@ -1,0 +1,846 @@
+[
+    {
+        "id": "b343aa235c33e13e",
+        "type": "tab",
+        "label": "作品制作_airCleaner",
+        "disabled": false,
+        "info": "",
+        "env": []
+    },
+    {
+        "id": "8aa241f4.c75d28",
+        "type": "function",
+        "z": "b343aa235c33e13e",
+        "name": "Humidity",
+        "func": "const { main, weather } = msg.payload;\n\nconst temp = main.temp;\nconst humidity = main.humidity;\nconst desc = weather[0].description;\nconst icon = weather[0].icon;\n\n\nlet autoCommand = \"\";\n\nif (humidity <= 60) {\n    autoCommand = \"on\";         // 60%以下なら「運転（加湿）」\n} else if (humidity >= 65) {\n    autoCommand = \"dehumidify\"; // 65%以上なら「除湿」\n} else {\n    autoCommand = \"off\";        // それ以外（61〜64%）は「停止」\n}\n// ------------------------------\n\nmsg.payload = {\n    temp: Math.round(temp * 10) / 10,\n    weather: desc,\n    iconUrl: `http://openweathermap.org/img/wn/${icon}@2x.png`,\n    value: autoCommand\n};\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 600,
+        "y": 600,
+        "wires": [
+            [
+                "d9498bb5.4a6298",
+                "72e9d67c3507d245"
+            ]
+        ]
+    },
+    {
+        "id": "22ba25d.f0e66da",
+        "type": "http in",
+        "z": "b343aa235c33e13e",
+        "name": "",
+        "url": "airCleaner",
+        "method": "get",
+        "upload": false,
+        "swaggerDoc": "",
+        "x": 100,
+        "y": 100,
+        "wires": [
+            [
+                "78503335164830cf"
+            ]
+        ]
+    },
+    {
+        "id": "edf8acc7.4ab958",
+        "type": "http response",
+        "z": "b343aa235c33e13e",
+        "name": "",
+        "statusCode": "",
+        "headers": {},
+        "x": 850,
+        "y": 100,
+        "wires": []
+    },
+    {
+        "id": "ca9257ec.462e38",
+        "type": "function",
+        "z": "b343aa235c33e13e",
+        "name": "onOff",
+        "func": "const value = msg.payload.value;\nvar epc;\nvar edt;\n\nif (value == \"on\") {\n    epc = 0x80;\n    edt = 0x30;\n    global.set(\"0x80\", \"0x30\");\n} else if (value == \"off\") {\n    epc = 0x80;\n    edt = 0x31;\n    global.set(\"0x80\", \"0x31\"); \n} else {\n    return;\n}\n\nmsg.els = {\n    \"ip\": \"127.0.0.1\",          \n    \"tid\": 1,\n    \"seoj\": [0x05ff, 0x01],\n    \"deoj\": [0x0130, 0x01],     \n    \"esv\": 0x61,\n    \"epc\": epc,\n    \"edt\": [edt]\n};\nreturn msg;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 390,
+        "y": 220,
+        "wires": [
+            [
+                "d1f3d26a.c41c78",
+                "4554f80.985ab88"
+            ]
+        ]
+    },
+    {
+        "id": "d1f3d26a.c41c78",
+        "type": "function",
+        "z": "b343aa235c33e13e",
+        "name": "Send EL1",
+        "func": "// Send ECHONET Lite packet\n// Assumption: OPC = 1\n//\n//  Usage:\n//      Input following data\n//\n//  msg.els.ip      // ip address (String)\n//  msg.els.tid     // TID (Int)\n//  msg.els.seoj    // SEOJ ([Int:device, Int:instance])\n//  msg.els.deoj    // DEOJ ([Int:device, Int:instance])\n//  msg.els.esv     // ESV (Int)\n//  msg.els.epc     // EPC (Int)\n//  msg.els.edt     // EDT ([Int])\n//          // in case of no EDT data, no edt or []\n\nconst tid_buffer = Buffer.allocUnsafe(2);\nlet   seoj_buffer = Buffer.allocUnsafe(3);\nconst seoj = msg.els.seoj;\nlet   deoj_buffer = Buffer.allocUnsafe(3);\nconst deoj = msg.els.deoj;\nconst esv_buffer = Buffer.allocUnsafe(1);\nconst opc_buffer = Buffer.from([1]);\nconst epc_buffer = Buffer.allocUnsafe(1);\nconst pdc_buffer = Buffer.allocUnsafe(1);\nlet edt = msg.els.edt;\n\ntid_buffer.writeUInt16BE(msg.els.tid, 0);\nesv_buffer.writeUInt8(msg.els.esv, 0);\nepc_buffer.writeUInt8(msg.els.epc, 0);\n\nseoj_buffer.writeUInt16BE(seoj[0], 0);\nseoj_buffer.writeUInt8(seoj[1], 2);\ndeoj_buffer.writeUInt16BE(deoj[0], 0);\ndeoj_buffer.writeUInt8(deoj[1], 2);\n\n// edt[]からedt_bufferを作成\nif ((typeof edt) == \"undefined\") {\n    edt = [];\n}\n\nconst edt_buffer = Buffer.allocUnsafe(edt.length);\nfor (var i = 0; i < edt.length; i++) {\n    edt_buffer.writeUInt8(edt[i], i);\n}\n\npdc_buffer.writeUInt8(edt_buffer.length, 0);\n\n// Create ECHONET Lite packet\nconst el_buffer = Buffer.from([\n\t0x10, 0x81,\n\ttid_buffer[0], tid_buffer[1],\n\tseoj_buffer[0], seoj_buffer[1], seoj_buffer[2],\n\tdeoj_buffer[0], deoj_buffer[1], deoj_buffer[2],\n\tesv_buffer[0], opc_buffer[0], epc_buffer[0], pdc_buffer[0]]);\n\n// add EDT data\nif (edt_buffer.length !== 0) {\n    msg.payload = Buffer.concat([el_buffer, edt_buffer], \n        (el_buffer.length + edt_buffer.length));\n} else {\n    msg.payload = el_buffer;\n}\n\nmsg.ip = msg.els.ip;\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "x": 560,
+        "y": 260,
+        "wires": [
+            [
+                "11ac3eb3.12bcf9",
+                "ba08890.d578378",
+                "da9e80e0.109328"
+            ]
+        ]
+    },
+    {
+        "id": "11ac3eb3.12bcf9",
+        "type": "debug",
+        "z": "b343aa235c33e13e",
+        "name": "",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 760,
+        "y": 200,
+        "wires": []
+    },
+    {
+        "id": "ba08890.d578378",
+        "type": "udp out",
+        "z": "b343aa235c33e13e",
+        "name": "EL send",
+        "addr": "",
+        "iface": "",
+        "port": "3610",
+        "ipv": "udp4",
+        "outport": "",
+        "base64": false,
+        "multicast": "false",
+        "x": 760,
+        "y": 280,
+        "wires": []
+    },
+    {
+        "id": "8fdcfdb5.f7389",
+        "type": "http in",
+        "z": "b343aa235c33e13e",
+        "name": "",
+        "url": "/airCleaner/onOff",
+        "method": "put",
+        "upload": false,
+        "swaggerDoc": "",
+        "x": 120,
+        "y": 220,
+        "wires": [
+            [
+                "ca9257ec.462e38"
+            ]
+        ]
+    },
+    {
+        "id": "1dcd98d3.a6a987",
+        "type": "function",
+        "z": "b343aa235c33e13e",
+        "name": "windStrength",
+        "func": "// const value = msg.payload.value;\n// var epc;\n// var edt;\n\n// if (value == \"strong\") {\n//     epc = 0xA0;\n//     edt = 0x38;\n// } else if (value == \"medium\") {\n//     epc = 0xA0;\n//     edt = 0x35;\n// } else if (value == \"weak\") {\n//     epc = 0xA0;\n//     edt = 0x31;\n// } else {\n//     return;\n// }\n\n// //global.set(\"0xA0\",edt);\n\n// msg.els = {\n//     \"ip\" : \"224.0.23.0\",\n//     \"tid\" : 5,\n//     \"seoj\" : [0x05ff,1],\n//     \"deoj\" : [0x0135,1],\n//     \"esv\" : 0x61,\n//     \"epc\" : epc,\n//     \"edt\" : [edt]\n// };\n\n// return msg;\n\nconst value = msg.payload.value;\nvar epc;\nvar edt;\n\nif (value == \"strong\") {\n    epc = 0xA0;\n    edt = 0x38;\n} else if (value == \"medium\") {\n    epc = 0xA0;\n    edt = 0x35;\n} else if (value == \"weak\") {\n    epc = 0xA0;\n    edt = 0x31;\n} else {\n    return;\n}\n\nglobal.set(\"0xA0\", edt);  // ← コメントアウト解除\n\nmsg.els = {\n    \"ip\": \"127.0.0.1\",       // ← 修正\n    \"tid\": 1,\n    \"seoj\": [0x05ff, 0x01],\n    \"deoj\": [0x0130, 0x01],  // ← 修正\n    \"esv\": 0x61,\n    \"epc\": epc,\n    \"edt\": [edt]\n};\nreturn msg;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 390,
+        "y": 300,
+        "wires": [
+            [
+                "d1f3d26a.c41c78"
+            ]
+        ]
+    },
+    {
+        "id": "74024650.7c7b98",
+        "type": "http in",
+        "z": "b343aa235c33e13e",
+        "name": "",
+        "url": "/airCleaner/windStrength",
+        "method": "put",
+        "upload": false,
+        "swaggerDoc": "",
+        "x": 140,
+        "y": 300,
+        "wires": [
+            [
+                "1dcd98d3.a6a987"
+            ]
+        ]
+    },
+    {
+        "id": "f57087.f4c72778",
+        "type": "http in",
+        "z": "b343aa235c33e13e",
+        "name": "",
+        "url": "/airCleaner/currentState",
+        "method": "get",
+        "upload": false,
+        "swaggerDoc": "",
+        "x": 140,
+        "y": 360,
+        "wires": [
+            [
+                "653ad0f5.215b6",
+                "9b7810ec.cfc9b8"
+            ]
+        ]
+    },
+    {
+        "id": "653ad0f5.215b6",
+        "type": "function",
+        "z": "b343aa235c33e13e",
+        "name": "getCurrentOnOff",
+        "func": "const value = msg.payload.value;\n\nif (value !== undefined) { // Set\n    return;\n}\n\nmsg.els = {\n    \"ip\": \"127.0.0.1\",\n    \"tid\": 1,\n    \"seoj\": [0x05ff, 0x01],\n    \"deoj\": [0x0130, 0x01],\n    \"esv\": 0x62,\n    \"epc\": 0x80,\n    \"edt\": []\n};\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 410,
+        "y": 360,
+        "wires": [
+            [
+                "5ec2b291.7fc79c"
+            ]
+        ]
+    },
+    {
+        "id": "a89eca0a.2a73d8",
+        "type": "delay",
+        "z": "b343aa235c33e13e",
+        "name": "",
+        "pauseType": "delay",
+        "timeout": "1",
+        "timeoutUnits": "seconds",
+        "rate": "1",
+        "nbRateUnits": "1",
+        "rateUnits": "second",
+        "randomFirst": "1",
+        "randomLast": "5",
+        "randomUnits": "seconds",
+        "drop": false,
+        "outputs": 1,
+        "x": 600,
+        "y": 440,
+        "wires": [
+            [
+                "d83d76c2.59c71"
+            ]
+        ]
+    },
+    {
+        "id": "d83d76c2.59c71",
+        "type": "function",
+        "z": "b343aa235c33e13e",
+        "name": "GlobalGet",
+        "func": "const onOff = global.get(\"0x80\");\nnode.warn(\"onOff の値: \" + onOff + \" / 型: \" + typeof onOff);\nlet data1=\"\";\n\nif(onOff==\"0x30\"){\n     data1 =\"on\";\n}else if(onOff==\"0x31\"){\n     data1=\"off\";\n}\n\nconst strength = global.get(\"0xA0\");\nlet data2=\"\";\n\nif(strength==\"0x38\"){\n     data2=\"強\";\n}else if(strength==\"0x35\"){\n     data2=\"中\";\n}else if(strength==\"0x31\"){\n     data2=\"弱\";\n}\n\nmsg.payload='{\"onOff\":\"'+data1+'\",\"strength\":\"'+data2+'\"}';\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 770,
+        "y": 440,
+        "wires": [
+            [
+                "dcd7503d.8d865",
+                "9a50b0a0.166948"
+            ]
+        ]
+    },
+    {
+        "id": "9b7810ec.cfc9b8",
+        "type": "function",
+        "z": "b343aa235c33e13e",
+        "name": "getCurrentStrength",
+        "func": "const value = msg.payload.value;\n\nif (value !== undefined) { // Set\n    return;\n}\n\nmsg.els = {\n    \"ip\": \"127.0.0.1\",\n    \"tid\": 1,\n    \"seoj\": [0x05ff, 0x01],\n    \"deoj\": [0x0130, 0x01],\n    \"esv\": 0x62,\n    \"epc\": 0xA0,\n    \"edt\": []\n};\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 410,
+        "y": 420,
+        "wires": [
+            [
+                "5ec2b291.7fc79c",
+                "a89eca0a.2a73d8"
+            ]
+        ]
+    },
+    {
+        "id": "5ec2b291.7fc79c",
+        "type": "function",
+        "z": "b343aa235c33e13e",
+        "name": "Send EL1",
+        "func": "// Send ECHONET Lite packet\n// Assumption: OPC = 1\n//\n//  Usage:\n//      Input following data\n//\n//  msg.els.ip      // ip address (String)\n//  msg.els.tid     // TID (Int)\n//  msg.els.seoj    // SEOJ ([Int:device, Int:instance])\n//  msg.els.deoj    // DEOJ ([Int:device, Int:instance])\n//  msg.els.esv     // ESV (Int)\n//  msg.els.epc     // EPC (Int)\n//  msg.els.edt     // EDT ([Int])\n//          // in case of no EDT data, no edt or []\n\nconst tid_buffer = Buffer.allocUnsafe(2);\nlet   seoj_buffer = Buffer.allocUnsafe(3);\nconst seoj = msg.els.seoj;\nlet   deoj_buffer = Buffer.allocUnsafe(3);\nconst deoj = msg.els.deoj;\nconst esv_buffer = Buffer.allocUnsafe(1);\nconst opc_buffer = Buffer.from([1]);\nconst epc_buffer = Buffer.allocUnsafe(1);\nconst pdc_buffer = Buffer.allocUnsafe(1);\nlet edt = msg.els.edt;\n\ntid_buffer.writeUInt16BE(msg.els.tid, 0);\nesv_buffer.writeUInt8(msg.els.esv, 0);\nepc_buffer.writeUInt8(msg.els.epc, 0);\n\nseoj_buffer.writeUInt16BE(seoj[0], 0);\nseoj_buffer.writeUInt8(seoj[1], 2);\ndeoj_buffer.writeUInt16BE(deoj[0], 0);\ndeoj_buffer.writeUInt8(deoj[1], 2);\n\n// edt[]からedt_bufferを作成\nif ((typeof edt) == \"undefined\") {\n    edt = [];\n}\n\nconst edt_buffer = Buffer.allocUnsafe(edt.length);\nfor (var i = 0; i < edt.length; i++) {\n    edt_buffer.writeUInt8(edt[i], i);\n}\n\npdc_buffer.writeUInt8(edt_buffer.length, 0);\n\n// Create ECHONET Lite packet\nconst el_buffer = Buffer.from([\n\t0x10, 0x81,\n\ttid_buffer[0], tid_buffer[1],\n\tseoj_buffer[0], seoj_buffer[1], seoj_buffer[2],\n\tdeoj_buffer[0], deoj_buffer[1], deoj_buffer[2],\n\tesv_buffer[0], opc_buffer[0], epc_buffer[0], pdc_buffer[0]]);\n\n// add EDT data\nif (edt_buffer.length !== 0) {\n    msg.payload = Buffer.concat([el_buffer, edt_buffer], \n        (el_buffer.length + edt_buffer.length));\n} else {\n    msg.payload = el_buffer;\n}\n\nmsg.ip = msg.els.ip;\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "x": 620,
+        "y": 360,
+        "wires": [
+            [
+                "ba08890.d578378",
+                "da9e80e0.109328"
+            ]
+        ]
+    },
+    {
+        "id": "32c829ee.b3e3d6",
+        "type": "udp in",
+        "z": "b343aa235c33e13e",
+        "name": "",
+        "iface": "",
+        "port": "3610",
+        "ipv": "udp4",
+        "multicast": "false",
+        "group": "",
+        "datatype": "buffer",
+        "x": 80,
+        "y": 480,
+        "wires": [
+            [
+                "8074bfb.cb7274"
+            ]
+        ]
+    },
+    {
+        "id": "8074bfb.cb7274",
+        "type": "function",
+        "z": "b343aa235c33e13e",
+        "name": "Parse EL1",
+        "func": "// Parse ECHONET Lite packet\n// Update: 2017.06.20\n// Assumption: OPC = 1\n\n//  OUTPUT:\n//  msg.elr.ip      // ip address (String)\n//  msg.elr.ehd     // EHD (Int)\n//  msg.elr.tid     // TID (Int)\n//  msg.elr.seoj    // SEOJ ([Int:device, Int:instance])\n//  msg.elr.deoj    // DEOJ ([Int:device, Int:instance])\n//  msg.elr.esv     // ESV (Int)\n//  msg.elr.opc     // OPC (Int)\n//  msg.elr.epc     // EPC (Int)\n//  msg.elr.pdc     // PDC (Int)\n//  msg.elr.edt     // EDT ([Int]) or [](no EDT data)\n\nconst buffer = msg.payload;\nmsg.elr = null;\n\nif (buffer.length >= 14) {\n  const ehd_buffer = buffer.slice(0, 2);\n  const tid_buffer = buffer.slice(2, 4);\n  const seoj_device_buffer = buffer.slice(4, 6);\n  const seoj_instance_buffer = buffer.slice(6, 7);\n  const deoj_device_buffer = buffer.slice(7, 9);\n  const deoj_instance_buffer = buffer.slice(9, 10);\n  const esv_buffer = buffer.slice(10, 11);\n  const opc_buffer = buffer.slice(11, 12);\n  const epc_buffer = buffer.slice(12, 13);\n  const pdc_buffer = buffer.slice(13, 14);\n\n  const ehd = ehd_buffer.readUInt16BE(0);\n  const tid = tid_buffer.readUInt16BE(0);\n  const seoj_device = seoj_device_buffer.readUInt16BE(0);\n  const seoj_instance = seoj_instance_buffer.readUInt8(0);\n  const seoj = [seoj_device, seoj_instance];\n  const deoj_device = deoj_device_buffer.readUInt16BE(0);\n  const deoj_instance = deoj_instance_buffer.readUInt8(0);\n  const deoj = [deoj_device, deoj_instance];\n  const esv = esv_buffer.readUInt8(0);\n  const opc = opc_buffer.readUInt8(0);\n  const epc = epc_buffer.readUInt8(0);\n  const pdc = pdc_buffer.readUInt8(0);\n  let edt = [];\n  \n  if (buffer.length >= 15) {\n    const edt_buffer = buffer.slice(14);\n    for (var i = 0; i < edt_buffer.length; i++) {\n        edt[i] = edt_buffer.readUInt8(i);\n    }\n  }\n\n  // ECHONET Lite header check\n  if (ehd == 0x1081) {\n    msg.elr = {\n        \"ip\"            : msg.ip,\n        \"ehd\"           : ehd,\n        \"tid\"           : tid,\n        \"seoj\"          : seoj,\n        \"deoj\"          : deoj,\n        \"esv\"           : esv,\n        \"opc\"           : opc,\n        \"epc\"           : epc,\n        \"pdc\"           : pdc,\n        \"edt\"           : edt\n    };\n  } else {  // 2017.06.20\n    return;\n  }\n}\n\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "x": 290,
+        "y": 480,
+        "wires": [
+            [
+                "eb20fa95.2c108"
+            ]
+        ]
+    },
+    {
+        "id": "eb20fa95.2c108",
+        "type": "function",
+        "z": "b343aa235c33e13e",
+        "name": "globalSet",
+        "func": "node.warn(\"seoj: \" + msg.elr.seoj[0].toString(16)\n    + \" esv: \" + msg.elr.esv.toString(16)\n    + \" epc: \" + msg.elr.epc.toString(16)\n    + \" edt: \" + msg.elr.edt[0]);\n\nif ((msg.elr.seoj[0] == 0x0130) && (msg.elr.esv == 0x72) && (msg.elr.epc == 0x80)) {\n    global.set(\"0x80\", msg.elr.edt[0]);\n} else if ((msg.elr.seoj[0] == 0x0130) && (msg.elr.esv == 0x72) && (msg.elr.epc == 0xA0)) {\n    global.set(\"0xA0\", msg.elr.edt[0]);\n}\nreturn msg;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 480,
+        "y": 480,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "9408ffc1.c65948",
+        "type": "http in",
+        "z": "b343aa235c33e13e",
+        "name": "",
+        "url": "/airCleaner/onOffByHumidity",
+        "method": "put",
+        "upload": false,
+        "swaggerDoc": "",
+        "x": 149,
+        "y": 579,
+        "wires": [
+            [
+                "81a9c514.4537a8"
+            ]
+        ]
+    },
+    {
+        "id": "5ce44d78.ebcabc",
+        "type": "link out",
+        "z": "b343aa235c33e13e",
+        "name": "",
+        "links": [
+            "febd9d75.6fabd"
+        ],
+        "x": 715,
+        "y": 540,
+        "wires": []
+    },
+    {
+        "id": "dcd7503d.8d865",
+        "type": "link out",
+        "z": "b343aa235c33e13e",
+        "name": "",
+        "links": [
+            "69006115.c0d6"
+        ],
+        "x": 920,
+        "y": 400,
+        "wires": []
+    },
+    {
+        "id": "69006115.c0d6",
+        "type": "link in",
+        "z": "b343aa235c33e13e",
+        "name": "",
+        "links": [
+            "dcd7503d.8d865"
+        ],
+        "x": 760,
+        "y": 60,
+        "wires": [
+            [
+                "edf8acc7.4ab958"
+            ]
+        ]
+    },
+    {
+        "id": "febd9d75.6fabd",
+        "type": "link in",
+        "z": "b343aa235c33e13e",
+        "name": "",
+        "links": [
+            "5ce44d78.ebcabc"
+        ],
+        "x": 759,
+        "y": 20,
+        "wires": [
+            [
+                "edf8acc7.4ab958"
+            ]
+        ]
+    },
+    {
+        "id": "4554f80.985ab88",
+        "type": "debug",
+        "z": "b343aa235c33e13e",
+        "name": "",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "false",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 540,
+        "y": 180,
+        "wires": []
+    },
+    {
+        "id": "127ef520.ae2893",
+        "type": "e-mail in",
+        "z": "b343aa235c33e13e",
+        "name": "",
+        "protocol": "IMAP",
+        "server": "imap.gmail.com",
+        "useSSL": true,
+        "autotls": "never",
+        "port": "993",
+        "authtype": "BASIC",
+        "saslformat": false,
+        "token": "oauth2Response.access_token",
+        "box": "INBOX",
+        "disposition": "Read",
+        "criteria": "UNSEEN",
+        "repeat": "10",
+        "fetch": "auto",
+        "inputs": 0,
+        "x": 70,
+        "y": 700,
+        "wires": [
+            [
+                "8805e07.a981ba",
+                "35db81c9cb7db0bc",
+                "e7ace196ac7c71fc"
+            ]
+        ]
+    },
+    {
+        "id": "8805e07.a981ba",
+        "type": "function",
+        "z": "b343aa235c33e13e",
+        "name": "メール文判定",
+        "func": "let body = \"\";\nif (typeof msg.payload === \"string\") {\n    body = msg.payload;\n} else {\n    body = msg.payload.html || msg.payload.text || msg.payload.payload || \"\";\n}\n\nbody = body.toLowerCase().trim();\n\nif (body.indexOf(\"off\") !== -1 || body.indexOf(\"停止\") !== -1) {\n    msg.payload = { \"value\": \"off\" };\n    return msg;\n} else if (body.indexOf(\"on\") !== -1 || body.indexOf(\"運転\") !== -1) {\n    msg.payload = { \"value\": \"on\" };\n    return msg;\n}\nreturn null;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 260,
+        "y": 700,
+        "wires": [
+            [
+                "69adc31d7aed4fcd"
+            ]
+        ]
+    },
+    {
+        "id": "7b631eec.4e42e",
+        "type": "function",
+        "z": "b343aa235c33e13e",
+        "name": "onOff",
+        "func": "var state = msg.payload.value;\n\nmsg.els = {\n    ip: \"127.0.0.1\",\n    tid: 1,\n    seoj: [0x05, 0xff, 0x01],\n    deoj: [0x01, 0x30, 0x01],\n    esv: 0x61,\n    epc: 0x80,\n    edt: [(state === 'on') ? 0x30 : 0x31]\n};\n\nglobal.set(\"0x80\", state === 'on' ? \"0x30\" : \"0x31\");\nreturn msg;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 550,
+        "y": 700,
+        "wires": [
+            [
+                "9e1ceb98.61301",
+                "c393ce58de9b4ce5"
+            ]
+        ]
+    },
+    {
+        "id": "9e1ceb98.61301",
+        "type": "function",
+        "z": "b343aa235c33e13e",
+        "name": "Send EL1",
+        "func": "// Send ECHONET Lite packet\n// Assumption: OPC = 1\n//\n//  Usage:\n//      Input following data\n//\n//  msg.els.ip      // ip address (String)\n//  msg.els.tid     // TID (Int)\n//  msg.els.seoj    // SEOJ ([Int:device, Int:instance])\n//  msg.els.deoj    // DEOJ ([Int:device, Int:instance])\n//  msg.els.esv     // ESV (Int)\n//  msg.els.epc     // EPC (Int)\n//  msg.els.edt     // EDT ([Int])\n//          // in case of no EDT data, no edt or []\n\nconst tid_buffer = Buffer.allocUnsafe(2);\nlet   seoj_buffer = Buffer.allocUnsafe(3);\nconst seoj = msg.els.seoj;\nlet   deoj_buffer = Buffer.allocUnsafe(3);\nconst deoj = msg.els.deoj;\nconst esv_buffer = Buffer.allocUnsafe(1);\nconst opc_buffer = Buffer.from([1]);\nconst epc_buffer = Buffer.allocUnsafe(1);\nconst pdc_buffer = Buffer.allocUnsafe(1);\nlet edt = msg.els.edt;\n\ntid_buffer.writeUInt16BE(msg.els.tid, 0);\nesv_buffer.writeUInt8(msg.els.esv, 0);\nepc_buffer.writeUInt8(msg.els.epc, 0);\n\nseoj_buffer.writeUInt16BE(seoj[0], 0);\nseoj_buffer.writeUInt8(seoj[1], 2);\ndeoj_buffer.writeUInt16BE(deoj[0], 0);\ndeoj_buffer.writeUInt8(deoj[1], 2);\n\n// edt[]からedt_bufferを作成\nif ((typeof edt) == \"undefined\") {\n    edt = [];\n}\n\nconst edt_buffer = Buffer.allocUnsafe(edt.length);\nfor (var i = 0; i < edt.length; i++) {\n    edt_buffer.writeUInt8(edt[i], i);\n}\n\npdc_buffer.writeUInt8(edt_buffer.length, 0);\n\n// Create ECHONET Lite packet\nconst el_buffer = Buffer.from([\n\t0x10, 0x81,\n\ttid_buffer[0], tid_buffer[1],\n\tseoj_buffer[0], seoj_buffer[1], seoj_buffer[2],\n\tdeoj_buffer[0], deoj_buffer[1], deoj_buffer[2],\n\tesv_buffer[0], opc_buffer[0], epc_buffer[0], pdc_buffer[0]]);\n\n// add EDT data\nif (edt_buffer.length !== 0) {\n    msg.payload = Buffer.concat([el_buffer, edt_buffer], \n        (el_buffer.length + edt_buffer.length));\n} else {\n    msg.payload = el_buffer;\n}\n\nmsg.ip = msg.els.ip;\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "x": 700,
+        "y": 700,
+        "wires": [
+            [
+                "9aee39f8.0a859",
+                "153b3b27.9518f5"
+            ]
+        ]
+    },
+    {
+        "id": "9aee39f8.0a859",
+        "type": "udp out",
+        "z": "b343aa235c33e13e",
+        "name": "EL send",
+        "addr": "",
+        "iface": "",
+        "port": "3610",
+        "ipv": "udp4",
+        "outport": "",
+        "base64": false,
+        "multicast": "false",
+        "x": 900,
+        "y": 700,
+        "wires": []
+    },
+    {
+        "id": "d9498bb5.4a6298",
+        "type": "function",
+        "z": "b343aa235c33e13e",
+        "name": "onOff",
+        "func": "const value = msg.payload.value;\nvar epc;\nvar edt;\n\nif (value == \"on\") {\n    epc = 0x80;\n    edt = 0x30;\n    global.set(\"0x80\", \"0x30\");\n} else if (value == \"off\") {\n    epc = 0x80;\n    edt = 0x31;\n    global.set(\"0x80\", \"0x31\");\n} else {\n    return;\n}\n\nmsg.els = {\n    \"ip\": \"127.0.0.1\",\n    \"tid\": 1,\n    \"seoj\": [0x05ff, 0x01],\n    \"deoj\": [0x0130, 0x01],\n    \"esv\": 0x61,\n    \"epc\": epc,\n    \"edt\": [edt]\n};\nreturn msg;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 489,
+        "y": 654,
+        "wires": [
+            [
+                "7fcbe93a.121198"
+            ]
+        ]
+    },
+    {
+        "id": "7fcbe93a.121198",
+        "type": "function",
+        "z": "b343aa235c33e13e",
+        "name": "Send EL1",
+        "func": "// Send ECHONET Lite packet\n// Assumption: OPC = 1\n//\n//  Usage:\n//      Input following data\n//\n//  msg.els.ip      // ip address (String)\n//  msg.els.tid     // TID (Int)\n//  msg.els.seoj    // SEOJ ([Int:device, Int:instance])\n//  msg.els.deoj    // DEOJ ([Int:device, Int:instance])\n//  msg.els.esv     // ESV (Int)\n//  msg.els.epc     // EPC (Int)\n//  msg.els.edt     // EDT ([Int])\n//          // in case of no EDT data, no edt or []\n\nconst tid_buffer = Buffer.allocUnsafe(2);\nlet   seoj_buffer = Buffer.allocUnsafe(3);\nconst seoj = msg.els.seoj;\nlet   deoj_buffer = Buffer.allocUnsafe(3);\nconst deoj = msg.els.deoj;\nconst esv_buffer = Buffer.allocUnsafe(1);\nconst opc_buffer = Buffer.from([1]);\nconst epc_buffer = Buffer.allocUnsafe(1);\nconst pdc_buffer = Buffer.allocUnsafe(1);\nlet edt = msg.els.edt;\n\ntid_buffer.writeUInt16BE(msg.els.tid, 0);\nesv_buffer.writeUInt8(msg.els.esv, 0);\nepc_buffer.writeUInt8(msg.els.epc, 0);\n\nseoj_buffer.writeUInt16BE(seoj[0], 0);\nseoj_buffer.writeUInt8(seoj[1], 2);\ndeoj_buffer.writeUInt16BE(deoj[0], 0);\ndeoj_buffer.writeUInt8(deoj[1], 2);\n\n// edt[]からedt_bufferを作成\nif ((typeof edt) == \"undefined\") {\n    edt = [];\n}\n\nconst edt_buffer = Buffer.allocUnsafe(edt.length);\nfor (var i = 0; i < edt.length; i++) {\n    edt_buffer.writeUInt8(edt[i], i);\n}\n\npdc_buffer.writeUInt8(edt_buffer.length, 0);\n\n// Create ECHONET Lite packet\nconst el_buffer = Buffer.from([\n\t0x10, 0x81,\n\ttid_buffer[0], tid_buffer[1],\n\tseoj_buffer[0], seoj_buffer[1], seoj_buffer[2],\n\tdeoj_buffer[0], deoj_buffer[1], deoj_buffer[2],\n\tesv_buffer[0], opc_buffer[0], epc_buffer[0], pdc_buffer[0]]);\n\n// add EDT data\nif (edt_buffer.length !== 0) {\n    msg.payload = Buffer.concat([el_buffer, edt_buffer], \n        (el_buffer.length + edt_buffer.length));\n} else {\n    msg.payload = el_buffer;\n}\n\nmsg.ip = msg.els.ip;\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "x": 622,
+        "y": 654,
+        "wires": [
+            [
+                "c9fecf3a.918a8"
+            ]
+        ]
+    },
+    {
+        "id": "c9fecf3a.918a8",
+        "type": "udp out",
+        "z": "b343aa235c33e13e",
+        "name": "EL send",
+        "addr": "",
+        "iface": "",
+        "port": "3610",
+        "ipv": "udp4",
+        "outport": "",
+        "base64": false,
+        "multicast": "false",
+        "x": 772,
+        "y": 654,
+        "wires": []
+    },
+    {
+        "id": "81a9c514.4537a8",
+        "type": "http request",
+        "z": "b343aa235c33e13e",
+        "name": "Open Weather API",
+        "method": "GET",
+        "ret": "obj",
+        "paytoqs": "ignore",
+        "url": "http://api.openweathermap.org/data/2.5/weather?q=tokyo&units=metric&lang=ja&appid=faceab059f93dbc0ca12f9a274103813",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [],
+        "x": 409,
+        "y": 580,
+        "wires": [
+            [
+                "cca24848.b5bb9",
+                "8aa241f4.c75d28"
+            ]
+        ]
+    },
+    {
+        "id": "4f6ef895.f2f738",
+        "type": "function",
+        "z": "b343aa235c33e13e",
+        "name": "HumidityMSG",
+        "func": "msg.payload=msg.payload.main.humidity;\n\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "x": 600,
+        "y": 540,
+        "wires": [
+            [
+                "5ce44d78.ebcabc"
+            ]
+        ]
+    },
+    {
+        "id": "5a62a911.8ca278",
+        "type": "inject",
+        "z": "b343aa235c33e13e",
+        "name": "",
+        "props": [
+            {
+                "p": "payload",
+                "v": "",
+                "vt": "date"
+            },
+            {
+                "p": "topic",
+                "v": "",
+                "vt": "str"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "payload": "",
+        "payloadType": "date",
+        "x": 220,
+        "y": 640,
+        "wires": [
+            [
+                "81a9c514.4537a8"
+            ]
+        ]
+    },
+    {
+        "id": "cca24848.b5bb9",
+        "type": "debug",
+        "z": "b343aa235c33e13e",
+        "name": "",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "false",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 780,
+        "y": 580,
+        "wires": []
+    },
+    {
+        "id": "9a50b0a0.166948",
+        "type": "debug",
+        "z": "b343aa235c33e13e",
+        "name": "",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 930,
+        "y": 480,
+        "wires": []
+    },
+    {
+        "id": "153b3b27.9518f5",
+        "type": "debug",
+        "z": "b343aa235c33e13e",
+        "name": "",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "false",
+        "x": 910,
+        "y": 780,
+        "wires": []
+    },
+    {
+        "id": "da9e80e0.109328",
+        "type": "debug",
+        "z": "b343aa235c33e13e",
+        "name": "",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "false",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 820,
+        "y": 360,
+        "wires": []
+    },
+    {
+        "id": "72e9d67c3507d245",
+        "type": "http response",
+        "z": "b343aa235c33e13e",
+        "name": "",
+        "statusCode": "",
+        "headers": {},
+        "x": 930,
+        "y": 620,
+        "wires": []
+    },
+    {
+        "id": "78503335164830cf",
+        "type": "template",
+        "z": "b343aa235c33e13e",
+        "name": "インターフェース",
+        "field": "payload",
+        "fieldType": "msg",
+        "format": "handlebars",
+        "syntax": "mustache",
+        "template": "<!doctype html>\n<html lang=\"ja\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no\">\n\n<title>空気清浄機リモコン</title>\n\n<link href=\"https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@100;300;400;500;700&display=swap\" rel=\"stylesheet\">\n\n<style>\n\n/* すべての要素の余白をリセット */\n*{\n    margin:0;\n    padding:0;\n    box-sizing:border-box;\n}\n\n/* 画面全体のデザイン */\nbody{\n    font-family:'Noto Sans JP', sans-serif;\n    background:linear-gradient(180deg,#f0f9ff 0%,#ffffff 100%);\n    height:100vh;\n    color:#333;\n    display:flex;\n    flex-direction:column;\n    overflow:hidden;\n    letter-spacing:0.03em;\n}\n\n/* =========================\n   Header（最上部）\n========================= */\n\nheader{\n    padding:16px 15px;\n    background-color:#fff;\n    text-align:center;\n    position:relative;\n}\n\n.menu-icon{\n    position:absolute;\n    left:15px;\n    top:20px;\n    font-size:1.2rem;\n    opacity:0.5;\n    cursor:pointer;\n}\n\n.reload-icon{\n    position:absolute;\n    right:15px;\n    top:20px;\n    font-size:1.1rem;\n    opacity:0.5;\n    cursor:pointer;\n    background:none;\n    border:none;\n    font-family:inherit;\n}\n\n.header-title{\n    font-size:1.1rem;\n    font-weight:500;\n}\n\n.status-update-time{\n    font-size:0.9rem;\n    color:#888;\n    font-weight:400;\n}\n\n/* =========================\n   Tab（部屋切り替え）\n========================= */\n\n.tab-bar{\n    display:flex;\n    justify-content:center;\n    gap:30px;\n    padding:12px 0;\n    background-color:#fff;\n    border-bottom:1px solid #f0f0f0;\n    font-size:0.85rem;\n    color:#999;\n}\n\n.tab-item{\n    position:relative;\n    cursor:pointer;\n}\n\n.tab-item.active{\n    color:#333;\n    font-weight:500;\n}\n\n.tab-item.active::after{\n    content:'';\n    position:absolute;\n    bottom:-12px;\n    left:0;\n    width:100%;\n    height:2px;\n    background-color:#333;\n}\n\n/* =========================\n   Status Bar（温度・湿度）\n========================= */\n\n.status-bar-container{\n    display:flex;\n    justify-content:center;\n    align-items:center;\n    padding:14px 15px;\n    background-color:rgba(240,249,255,0.5);\n}\n\n.status-info{\n    display:flex;\n    gap:10px;\n    align-items:center;\n    font-size:0.9rem;\n}\n\n.location-label{\n    color:#888;\n    font-size:0.92rem;\n    font-weight:500;\n}\n\n.status-value{\n    color:#333;\n    font-weight:500;\n}\n\n.status-divider{\n    color:#ddd;\n    margin:0 2px;\n}\n\n.air-quality{\n    color:#43a047;\n    font-weight:500;\n}\n\n/* ℃ や % の小さい文字 */\nsmall{\n    font-size:0.65em;\n}\n\n/* 天気アイコン・テキスト（初期は非表示） */\n#weather-icon{\n    display:none;\n    vertical-align:middle;\n    height:20px;\n}\n\n#tokyo-weather{\n    display:none;\n    font-size:0.7rem;\n    color:#4fc3f7;\n}\n\n/* =========================\n   Main Display（中央の大きな文字）\n   clamp() でどんな画面サイズでも自然にスケール\n========================= */\n\n.main-display{\n    flex:1;\n    display:flex;\n    flex-direction:column;\n    justify-content:center; /* 上寄せ→中央寄せに変更 */\n    align-items:center;\n    min-height:0; /* flexの縮小を許可 */\n}\n\n.current-strength-display{\n    /* 最小5rem・推奨20vw・最大10rem でスムーズにスケール */\n    font-size:clamp(5rem, 20vw, 10rem);\n    font-weight:100;\n    line-height:1.1;\n    color:#333;\n}\n\n#current-onOff{\n    font-size:clamp(1.1rem, 3vw, 1.4rem);\n    color:#888;\n    margin-top:10px;\n}\n\n/* =========================\n   Control Area（スライダー）\n========================= */\n\n.control-area{\n    padding:0 25px 60px;\n}\n\n.slider-container{\n    display:flex;\n    align-items:center;\n    gap:15px;\n    margin-bottom:30px;\n}\n\n.slider-label{\n    opacity:0.3;\n    font-size:1rem;\n    user-select:none;\n}\n\n/* スライダーの溝 */\n.strength-slider{\n    flex:1;\n    -webkit-appearance:none;\n    height:6px;\n    background:#e3f2fd;\n    border-radius:10px;\n    outline:none;\n}\n\n/* スライダーのつまみ */\n.strength-slider::-webkit-slider-thumb{\n    -webkit-appearance:none;\n    width:28px;\n    height:28px;\n    background:#fff;\n    border:1px solid #eee;\n    border-radius:50%;\n    box-shadow:0 2px 8px rgba(0,0,0,0.1);\n    cursor:pointer;\n}\n\n/* =========================\n   Buttons（グリッド配置）\n========================= */\n\n.button-grid{\n    display:grid;\n    grid-template-columns:repeat(6,1fr);\n    gap:12px;\n}\n\n.tile-btn{\n    border-radius:15px;\n    padding:22px 0;\n    text-align:center;\n    font-weight:500;\n    cursor:pointer;\n    transition:all 0.2s;\n    user-select:none;\n    border:none;\n    font-family:inherit;\n    font-size:inherit;\n}\n\n.tile-btn:hover{\n    opacity:0.9;\n}\n\n.tile-btn:active{\n    transform:scale(0.97);\n    opacity:0.8;\n}\n\n.btn-weak, .btn-medium, .btn-strong{ grid-column:span 2; background-color:#e8f6ff; color:#555; }\n.btn-on, .btn-off{ grid-column:span 3; margin-top:5px; }\n\n.btn-on{ background-color:#b3e5fc; color:#0277bd; }\n.btn-off{ background-color:#37474f; color:#fff; }\n\n/* =========================\n   Active State（光る状態）\n========================= */\n\n.active-on{\n    background-color:#29b6f6 !important;\n    color:#fff !important;\n    box-shadow:0 0 14px rgba(41,182,246,0.35);\n}\n\n.active-off{\n    background-color:#263238 !important;\n    color:#fff !important;\n}\n\n/* =========================\n   Auto Button（おまかせ運転）\n========================= */\n\n.auto-check-btn{\n    display:block;\n    width:100%;\n    text-align:center;\n    color:#4fc3f7;\n    font-size:0.9rem;\n    margin-top:25px;\n    background:none;\n    border:none;\n    cursor:pointer;\n    font-family:inherit;\n    letter-spacing:0.03em;\n}\n\n</style>\n</head>\n\n<body>\n\n<header>\n    <div class=\"menu-icon\" aria-label=\"メニュー\">☰</div>\n    <div class=\"header-title\">空気清浄機リモコン</div>\n    <div class=\"status-update-time\" id=\"last-update\">--/-- --:--</div>\n    <button class=\"reload-icon\" onclick=\"getCurrentState()\" aria-label=\"更新\">↻</button>\n</header>\n\n<div class=\"tab-bar\">\n    <div class=\"tab-item\">すべて</div>\n    <div class=\"tab-item active\">リビング</div>\n    <div class=\"tab-item\">寝室</div>\n</div>\n\n<div class=\"status-bar-container\">\n    <div class=\"status-info\">\n        <span class=\"location-label\">室内</span>\n        <span class=\"status-value\" id=\"indoor-temp\">25<small>℃</small></span>\n        <span class=\"status-value\" id=\"indoor-humidity\">50<small>%</small></span>\n        <span class=\"air-quality\">きれい</span>\n        <span class=\"status-divider\">|</span>\n        <span class=\"location-label\">屋外</span>\n        <span class=\"status-value\" id=\"tokyo-temp\">--<small>℃</small></span>\n        <img id=\"weather-icon\" src=\"\" alt=\"天気アイコン\">\n        <span id=\"tokyo-weather\">--</span>\n    </div>\n</div>\n\n<div class=\"main-display\">\n    <div class=\"current-strength-display\" id=\"current-strength\">--</div>\n    <div id=\"current-onOff\">読み込み中...</div>\n</div>\n\n<div class=\"control-area\">\n    <div class=\"slider-container\">\n        <span class=\"slider-label\" aria-hidden=\"true\">－</span>\n        <input type=\"range\" min=\"1\" max=\"100\" value=\"50\" class=\"strength-slider\" id=\"strengthRange\"\n               oninput=\"handleSlider(this.value)\" aria-label=\"風量\">\n        <span class=\"slider-label\" aria-hidden=\"true\">＋</span>\n    </div>\n\n    <div class=\"button-grid\">\n        <button class=\"tile-btn btn-weak\"   onclick=\"ButtonClick('weak')\">弱</button>\n        <button class=\"tile-btn btn-medium\" onclick=\"ButtonClick('medium')\">中</button>\n        <button class=\"tile-btn btn-strong\" onclick=\"ButtonClick('strong')\">強</button>\n        <button class=\"tile-btn btn-on\"  id=\"btnOn\"  onclick=\"ButtonClick('on')\">運転</button>\n        <button class=\"tile-btn btn-off\" id=\"btnOff\" onclick=\"ButtonClick('off')\">停止</button>\n    </div>\n\n    <button class=\"auto-check-btn\" onclick=\"onOffByHumidity()\">おまかせ運転</button>\n</div>\n\n<script>\nlet lastSentStrength = '';\n\n/* 時刻を更新する関数 */\nfunction updateTime(){\n    const now = new Date();\n    const timeStr = `${now.getMonth()+1}/${now.getDate()} ${now.getHours()}:${now.getMinutes().toString().padStart(2,'0')}`;\n    document.getElementById('last-update').innerText = timeStr;\n}\n\n/* 運転・停止ボタンの見た目を切り替える */\nfunction updateOnOffUI(state){\n    const onBtn  = document.getElementById('btnOn');\n    const offBtn = document.getElementById('btnOff');\n    onBtn.classList.remove('active-on');\n    offBtn.classList.remove('active-off');\n    if(state === 'on'){\n        onBtn.classList.add('active-on');\n    }else{\n        offBtn.classList.add('active-off');\n    }\n}\n\n/* スライダーを動かしたときの処理 */\nfunction handleSlider(value){\n    let strength = (value <= 33) ? 'weak' : (value <= 66) ? 'medium' : 'strong';\n    let displayText = (strength === 'weak') ? '弱' : (strength === 'medium') ? '中' : '強';\n    document.getElementById('current-strength').innerText = displayText;\n    if(strength !== lastSentStrength){\n        lastSentStrength = strength;\n        sendStrengthCommand(strength);\n    }\n}\n\n/* ボタンがクリックされた時の処理 */\nfunction ButtonClick(val){\n    if(val === 'on' || val === 'off'){\n        sendOnOffCommand(val);\n        document.getElementById('current-onOff').innerText = (val === 'on') ? '運転中' : '停止中';\n        updateOnOffUI(val);\n    }else{\n        lastSentStrength = val;\n        document.getElementById('current-onOff').innerText = '運転中';\n        updateOnOffUI('on');\n        document.getElementById('current-strength').innerText = (val === 'weak') ? '弱' : (val === 'medium') ? '中' : '強';\n        let slider = document.getElementById('strengthRange');\n        slider.value = (val === 'strong') ? 100 : (val === 'medium') ? 50 : 1;\n        sendStrengthCommand(val);\n    }\n}\n\n/* 通信：運転・停止を送る */\nfunction sendOnOffCommand(val){\n    let request = new XMLHttpRequest();\n    request.open('PUT', '/airCleaner/onOff');\n    request.setRequestHeader(\"Content-type\", \"application/json\");\n    request.send(JSON.stringify({ value: val }));\n    updateTime();\n}\n\n/* 通信：風量を送る */\nfunction sendStrengthCommand(val){\n    let request = new XMLHttpRequest();\n    request.open('PUT', '/airCleaner/windStrength');\n    request.setRequestHeader(\"Content-type\", \"application/json\");\n    request.send(JSON.stringify({ value: val }));\n    updateTime();\n}\n\n/* 通信：現在の状態を取得する */\nfunction getCurrentState(){\n    let request = new XMLHttpRequest();\n    request.onload = function(){\n        if(this.status === 200){\n            const res = JSON.parse(this.responseText);\n            document.getElementById('current-onOff').innerText = (res.onOff === 'on') ? '運転中' : '停止中';\n            updateOnOffUI(res.onOff);\n            document.getElementById('current-strength').innerText = (res.strength === 'strong') ? '強' : (res.strength === 'medium') ? '中' : '弱';\n            let slider = document.getElementById('strengthRange');\n            slider.value = (res.strength === 'strong') ? 100 : (res.strength === 'medium') ? 50 : 1;\n            lastSentStrength = res.strength;\n\n            // 室内温湿度が返ってくる場合は動的に更新\n            if(res.indoorTemp !== undefined){\n                document.getElementById('indoor-temp').innerHTML = `${res.indoorTemp}<small>℃</small>`;\n            }\n            if(res.indoorHumidity !== undefined){\n                document.getElementById('indoor-humidity').innerHTML = `${res.indoorHumidity}<small>%</small>`;\n            }\n\n            updateTime();\n        }\n    };\n    request.open('GET', '/airCleaner/currentState');\n    request.send();\n}\n\n/* おまかせ運転の処理 */\nfunction onOffByHumidity(){\n    let request = new XMLHttpRequest();\n    request.open('PUT', '/airCleaner/onOffByHumidity');\n    request.setRequestHeader(\"Content-type\", \"application/json\");\n    request.onload = function(){\n        if(this.status === 200){\n            const data = JSON.parse(this.responseText);\n\n            if(data.temp !== undefined){\n                document.getElementById('tokyo-temp').innerHTML = `${data.temp}<small>℃</small>`;\n            }\n\n            const iconImg = document.getElementById('weather-icon');\n            if(data.iconUrl){\n                iconImg.src = data.iconUrl;\n                iconImg.style.display = 'inline';\n            }\n\n            const weatherText = document.getElementById('tokyo-weather');\n            if(data.weather){\n                weatherText.innerText = data.weather;\n                weatherText.style.display = 'inline';\n            }\n\n            updateOnOffUI('on');\n            document.getElementById('current-onOff').innerText = 'おまかせ運転中';\n            updateTime();\n        }\n    };\n    request.send();\n}\n\n/* ページ読み込み時の処理 */\nwindow.onload = function(){\n    getCurrentState();\n    setInterval(getCurrentState, 60000);\n};\n</script>\n\n</body>\n</html>\n",
+        "output": "str",
+        "x": 430,
+        "y": 100,
+        "wires": [
+            [
+                "edf8acc7.4ab958"
+            ]
+        ]
+    },
+    {
+        "id": "e7ace196ac7c71fc",
+        "type": "debug",
+        "z": "b343aa235c33e13e",
+        "name": "debug 2",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "true",
+        "targetType": "full",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 280,
+        "y": 760,
+        "wires": []
+    },
+    {
+        "id": "69adc31d7aed4fcd",
+        "type": "function",
+        "z": "b343aa235c33e13e",
+        "name": "function 1",
+        "func": "const raw = typeof msg.payload === \"string\" ? msg.payload : msg.payload.value;\n\nmsg.payload = {\n    value: raw.trim()  // ← trim()でon↵をonにする\n};\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 420,
+        "y": 700,
+        "wires": [
+            [
+                "7b631eec.4e42e"
+            ]
+        ]
+    },
+    {
+        "id": "35db81c9cb7db0bc",
+        "type": "debug",
+        "z": "b343aa235c33e13e",
+        "name": "debug 3",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "false",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 280,
+        "y": 800,
+        "wires": []
+    },
+    {
+        "id": "c393ce58de9b4ce5",
+        "type": "debug",
+        "z": "b343aa235c33e13e",
+        "name": "debug 4",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "false",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 700,
+        "y": 780,
+        "wires": []
+    },
+    {
+        "id": "8b0095e091a90f47",
+        "type": "global-config",
+        "env": [],
+        "modules": {
+            "node-red-node-email": "5.2.2"
+        }
+    }
+]

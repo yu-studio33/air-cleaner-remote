@@ -1,0 +1,504 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+
+<title>空気清浄機リモコン</title>
+
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@100;300;400;500;700&display=swap" rel="stylesheet">
+
+<style>
+
+/* すべての要素の余白をリセット */
+*{
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+}
+
+/* 画面全体のデザイン */
+body{
+    font-family:'Noto Sans JP', sans-serif;
+    background:linear-gradient(180deg,#f0f9ff 0%,#ffffff 100%);
+    height:100vh;
+    color:#333;
+    display:flex;
+    flex-direction:column;
+    overflow:hidden;
+    letter-spacing:0.03em;
+}
+
+/* =========================
+   Header（最上部）
+========================= */
+
+header{
+    padding:16px 15px;
+    background-color:#fff;
+    text-align:center;
+    position:relative;
+}
+
+.menu-icon{
+    position:absolute;
+    left:15px;
+    top:20px;
+    font-size:1.2rem;
+    opacity:0.5;
+    cursor:pointer;
+}
+
+.reload-icon{
+    position:absolute;
+    right:15px;
+    top:20px;
+    font-size:1.1rem;
+    opacity:0.5;
+    cursor:pointer;
+    background:none;
+    border:none;
+    font-family:inherit;
+}
+
+.header-title{
+    font-size:1.1rem;
+    font-weight:500;
+}
+
+.status-update-time{
+    font-size:0.9rem;
+    color:#888;
+    font-weight:400;
+}
+
+/* =========================
+   Tab（部屋切り替え）
+========================= */
+
+.tab-bar{
+    display:flex;
+    justify-content:center;
+    gap:30px;
+    padding:12px 0;
+    background-color:#fff;
+    border-bottom:1px solid #f0f0f0;
+    font-size:0.85rem;
+    color:#999;
+}
+
+.tab-item{
+    position:relative;
+    cursor:pointer;
+}
+
+.tab-item.active{
+    color:#333;
+    font-weight:500;
+}
+
+.tab-item.active::after{
+    content:'';
+    position:absolute;
+    bottom:-12px;
+    left:0;
+    width:100%;
+    height:2px;
+    background-color:#333;
+}
+
+/* =========================
+   Status Bar（温度・湿度）
+========================= */
+
+.status-bar-container{
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    padding:14px 15px;
+    background-color:rgba(240,249,255,0.5);
+}
+
+.status-info{
+    display:flex;
+    gap:10px;
+    align-items:center;
+    font-size:0.9rem;
+}
+
+.location-label{
+    color:#888;
+    font-size:0.92rem;
+    font-weight:500;
+}
+
+.status-value{
+    color:#333;
+    font-weight:500;
+}
+
+.status-divider{
+    color:#ddd;
+    margin:0 2px;
+}
+
+.air-quality{
+    color:#43a047;
+    font-weight:500;
+}
+
+/* ℃ や % の小さい文字 */
+small{
+    font-size:0.65em;
+}
+
+/* 天気アイコン・テキスト（初期は非表示） */
+#weather-icon{
+    display:none;
+    vertical-align:middle;
+    height:20px;
+}
+
+#tokyo-weather{
+    display:none;
+    font-size:0.7rem;
+    color:#4fc3f7;
+}
+
+/* =========================
+   Main Display（中央の大きな文字）
+   clamp() でどんな画面サイズでも自然にスケール
+========================= */
+
+.main-display{
+    flex:1;
+    display:flex;
+    flex-direction:column;
+    justify-content:center; /* 上寄せ→中央寄せに変更 */
+    align-items:center;
+    min-height:0; /* flexの縮小を許可 */
+}
+
+.current-strength-display{
+    /* 最小5rem・推奨20vw・最大10rem でスムーズにスケール */
+    font-size:clamp(5rem, 20vw, 10rem);
+    font-weight:100;
+    line-height:1.1;
+    color:#333;
+}
+
+#current-onOff{
+    font-size:clamp(1.1rem, 3vw, 1.4rem);
+    color:#888;
+    margin-top:10px;
+}
+
+/* =========================
+   Control Area（スライダー）
+========================= */
+
+.control-area{
+    padding:0 25px 60px;
+}
+
+.slider-container{
+    display:flex;
+    align-items:center;
+    gap:15px;
+    margin-bottom:30px;
+}
+
+.slider-label{
+    opacity:0.3;
+    font-size:1rem;
+    user-select:none;
+}
+
+/* スライダーの溝 */
+.strength-slider{
+    flex:1;
+    -webkit-appearance:none;
+    height:6px;
+    background:#e3f2fd;
+    border-radius:10px;
+    outline:none;
+}
+
+/* スライダーのつまみ */
+.strength-slider::-webkit-slider-thumb{
+    -webkit-appearance:none;
+    width:28px;
+    height:28px;
+    background:#fff;
+    border:1px solid #eee;
+    border-radius:50%;
+    box-shadow:0 2px 8px rgba(0,0,0,0.1);
+    cursor:pointer;
+}
+
+/* =========================
+   Buttons（グリッド配置）
+========================= */
+
+.button-grid{
+    display:grid;
+    grid-template-columns:repeat(6,1fr);
+    gap:12px;
+}
+
+.tile-btn{
+    border-radius:15px;
+    padding:22px 0;
+    text-align:center;
+    font-weight:500;
+    cursor:pointer;
+    transition:all 0.2s;
+    user-select:none;
+    border:none;
+    font-family:inherit;
+    font-size:inherit;
+}
+
+.tile-btn:hover{
+    opacity:0.9;
+}
+
+.tile-btn:active{
+    transform:scale(0.97);
+    opacity:0.8;
+}
+
+.btn-weak, .btn-medium, .btn-strong{ grid-column:span 2; background-color:#e8f6ff; color:#555; }
+.btn-on, .btn-off{ grid-column:span 3; margin-top:5px; }
+
+.btn-on{ background-color:#b3e5fc; color:#0277bd; }
+.btn-off{ background-color:#37474f; color:#fff; }
+
+/* =========================
+   Active State（光る状態）
+========================= */
+
+.active-on{
+    background-color:#29b6f6 !important;
+    color:#fff !important;
+    box-shadow:0 0 14px rgba(41,182,246,0.35);
+}
+
+.active-off{
+    background-color:#263238 !important;
+    color:#fff !important;
+}
+
+/* =========================
+   Auto Button（おまかせ運転）
+========================= */
+
+.auto-check-btn{
+    display:block;
+    width:100%;
+    text-align:center;
+    color:#4fc3f7;
+    font-size:0.9rem;
+    margin-top:25px;
+    background:none;
+    border:none;
+    cursor:pointer;
+    font-family:inherit;
+    letter-spacing:0.03em;
+}
+
+</style>
+</head>
+
+<body>
+
+<header>
+    <div class="menu-icon" aria-label="メニュー">☰</div>
+    <div class="header-title">空気清浄機リモコン</div>
+    <div class="status-update-time" id="last-update">--/-- --:--</div>
+    <button class="reload-icon" onclick="getCurrentState()" aria-label="更新">↻</button>
+</header>
+
+<div class="tab-bar">
+    <div class="tab-item">すべて</div>
+    <div class="tab-item active">リビング</div>
+    <div class="tab-item">寝室</div>
+</div>
+
+<div class="status-bar-container">
+    <div class="status-info">
+        <span class="location-label">室内</span>
+        <span class="status-value" id="indoor-temp">25<small>℃</small></span>
+        <span class="status-value" id="indoor-humidity">50<small>%</small></span>
+        <span class="air-quality">きれい</span>
+        <span class="status-divider">|</span>
+        <span class="location-label">屋外</span>
+        <span class="status-value" id="tokyo-temp">--<small>℃</small></span>
+        <img id="weather-icon" src="" alt="天気アイコン">
+        <span id="tokyo-weather">--</span>
+    </div>
+</div>
+
+<div class="main-display">
+    <div class="current-strength-display" id="current-strength">--</div>
+    <div id="current-onOff">読み込み中...</div>
+</div>
+
+<div class="control-area">
+    <div class="slider-container">
+        <span class="slider-label" aria-hidden="true">－</span>
+        <input type="range" min="1" max="100" value="50" class="strength-slider" id="strengthRange"
+               oninput="handleSlider(this.value)" aria-label="風量">
+        <span class="slider-label" aria-hidden="true">＋</span>
+    </div>
+
+    <div class="button-grid">
+        <button class="tile-btn btn-weak"   onclick="ButtonClick('weak')">弱</button>
+        <button class="tile-btn btn-medium" onclick="ButtonClick('medium')">中</button>
+        <button class="tile-btn btn-strong" onclick="ButtonClick('strong')">強</button>
+        <button class="tile-btn btn-on"  id="btnOn"  onclick="ButtonClick('on')">運転</button>
+        <button class="tile-btn btn-off" id="btnOff" onclick="ButtonClick('off')">停止</button>
+    </div>
+
+    <button class="auto-check-btn" onclick="onOffByHumidity()">おまかせ運転</button>
+</div>
+
+<script>
+let lastSentStrength = '';
+
+/* 時刻を更新する関数 */
+function updateTime(){
+    const now = new Date();
+    const timeStr = `${now.getMonth()+1}/${now.getDate()} ${now.getHours()}:${now.getMinutes().toString().padStart(2,'0')}`;
+    document.getElementById('last-update').innerText = timeStr;
+}
+
+/* 運転・停止ボタンの見た目を切り替える */
+function updateOnOffUI(state){
+    const onBtn  = document.getElementById('btnOn');
+    const offBtn = document.getElementById('btnOff');
+    onBtn.classList.remove('active-on');
+    offBtn.classList.remove('active-off');
+    if(state === 'on'){
+        onBtn.classList.add('active-on');
+    }else{
+        offBtn.classList.add('active-off');
+    }
+}
+
+/* スライダーを動かしたときの処理 */
+function handleSlider(value){
+    let strength = (value <= 33) ? 'weak' : (value <= 66) ? 'medium' : 'strong';
+    let displayText = (strength === 'weak') ? '弱' : (strength === 'medium') ? '中' : '強';
+    document.getElementById('current-strength').innerText = displayText;
+    if(strength !== lastSentStrength){
+        lastSentStrength = strength;
+        sendStrengthCommand(strength);
+    }
+}
+
+/* ボタンがクリックされた時の処理 */
+function ButtonClick(val){
+    if(val === 'on' || val === 'off'){
+        sendOnOffCommand(val);
+        document.getElementById('current-onOff').innerText = (val === 'on') ? '運転中' : '停止中';
+        updateOnOffUI(val);
+    }else{
+        lastSentStrength = val;
+        document.getElementById('current-onOff').innerText = '運転中';
+        updateOnOffUI('on');
+        document.getElementById('current-strength').innerText = (val === 'weak') ? '弱' : (val === 'medium') ? '中' : '強';
+        let slider = document.getElementById('strengthRange');
+        slider.value = (val === 'strong') ? 100 : (val === 'medium') ? 50 : 1;
+        sendStrengthCommand(val);
+    }
+}
+
+/* 通信：運転・停止を送る */
+function sendOnOffCommand(val){
+    let request = new XMLHttpRequest();
+    request.open('PUT', '/airCleaner/onOff');
+    request.setRequestHeader("Content-type", "application/json");
+    request.send(JSON.stringify({ value: val }));
+    updateTime();
+}
+
+/* 通信：風量を送る */
+function sendStrengthCommand(val){
+    let request = new XMLHttpRequest();
+    request.open('PUT', '/airCleaner/windStrength');
+    request.setRequestHeader("Content-type", "application/json");
+    request.send(JSON.stringify({ value: val }));
+    updateTime();
+}
+
+/* 通信：現在の状態を取得する */
+function getCurrentState(){
+    let request = new XMLHttpRequest();
+    request.onload = function(){
+        if(this.status === 200){
+            const res = JSON.parse(this.responseText);
+            document.getElementById('current-onOff').innerText = (res.onOff === 'on') ? '運転中' : '停止中';
+            updateOnOffUI(res.onOff);
+            document.getElementById('current-strength').innerText = (res.strength === 'strong') ? '強' : (res.strength === 'medium') ? '中' : '弱';
+            let slider = document.getElementById('strengthRange');
+            slider.value = (res.strength === 'strong') ? 100 : (res.strength === 'medium') ? 50 : 1;
+            lastSentStrength = res.strength;
+
+            // 室内温湿度が返ってくる場合は動的に更新
+            if(res.indoorTemp !== undefined){
+                document.getElementById('indoor-temp').innerHTML = `${res.indoorTemp}<small>℃</small>`;
+            }
+            if(res.indoorHumidity !== undefined){
+                document.getElementById('indoor-humidity').innerHTML = `${res.indoorHumidity}<small>%</small>`;
+            }
+
+            updateTime();
+        }
+    };
+    request.open('GET', '/airCleaner/currentState');
+    request.send();
+}
+
+/* おまかせ運転の処理 */
+function onOffByHumidity(){
+    let request = new XMLHttpRequest();
+    request.open('PUT', '/airCleaner/onOffByHumidity');
+    request.setRequestHeader("Content-type", "application/json");
+    request.onload = function(){
+        if(this.status === 200){
+            const data = JSON.parse(this.responseText);
+
+            if(data.temp !== undefined){
+                document.getElementById('tokyo-temp').innerHTML = `${data.temp}<small>℃</small>`;
+            }
+
+            const iconImg = document.getElementById('weather-icon');
+            if(data.iconUrl){
+                iconImg.src = data.iconUrl;
+                iconImg.style.display = 'inline';
+            }
+
+            const weatherText = document.getElementById('tokyo-weather');
+            if(data.weather){
+                weatherText.innerText = data.weather;
+                weatherText.style.display = 'inline';
+            }
+
+            updateOnOffUI('on');
+            document.getElementById('current-onOff').innerText = 'おまかせ運転中';
+            updateTime();
+        }
+    };
+    request.send();
+}
+
+/* ページ読み込み時の処理 */
+window.onload = function(){
+    getCurrentState();
+    setInterval(getCurrentState, 60000);
+};
+</script>
+
+</body>
+</html>
