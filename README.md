@@ -5,7 +5,7 @@ ECHONET Lite プロトコルを使って架空のデバイスを制御し、Open
 
 ## 画面イメージ
 
-![空気清浄機リモコン]<img src="remote.png" width="300">
+<img src="remote.png" alt="空気清浄機リモコン" width="300">
 
 ## 使用技術
 
