@@ -30,8 +30,7 @@ ECHONET Lite プロトコルを使って架空のデバイスを制御し、Open
 ```
 air-cleaner-remote/
 ├── air_cleaner_remote.html  # リモコンUI（HTML/CSS/JavaScript）
-├── flows.json               # Node-RED フロー定義
-└── README.md
+└── flows.json               # Node-RED フロー定義
 ```
 
 ## 実行方法
